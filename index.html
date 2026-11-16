@@ -46,6 +46,10 @@ input[type=search]:focus-visible{outline:3px solid var(--accent-soft);border-col
 .chips{display:flex;gap:8px;margin-top:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
 .chips::-webkit-scrollbar{display:none}
 .chip{font:inherit;font-size:14px;min-height:36px;padding:4px 14px;white-space:nowrap;flex:none;border:1px solid var(--line);border-radius:99px;background:var(--surface);color:var(--fg);cursor:pointer}
+.hist-h{display:flex;justify-content:space-between;align-items:center;margin-top:6px;font-size:12px;color:var(--muted)}
+.hist-h .btn{min-height:32px;padding:2px 10px;font-size:12px}
+.hist-empty{font-size:13px;color:var(--muted);margin-top:6px}
+.chips{flex-wrap:wrap;overflow:visible}
 .chip:hover,.chip:focus-visible{border-color:var(--accent);color:var(--accent);outline:none}
 .count{color:var(--muted);font-size:13px;margin:10px 0 6px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:10px}
@@ -86,7 +90,9 @@ summary .code{margin-right:8px}
 </header>
 <div class="bar">
   <div class="field"><input id="q" type="search" placeholder="傷病名・コード（例：心筋梗塞、I21）" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" inputmode="search" aria-label="傷病名またはICDコード"><button id="clr" class="clr" type="button" aria-label="入力を消す" hidden>✕</button></div>
+  <div class="hist-h" id="histh" hidden><span>検索履歴（新しい順・最大10件）</span><button id="histclr" class="btn" type="button">履歴を消す</button></div>
   <div class="chips" id="chips"></div>
+  <div class="hist-empty" id="histe">検索した語はここに履歴として残ります。</div>
 </div>
 <div id="count" class="count" aria-live="polite"></div>
 <div id="results"></div>
@@ -177,12 +183,34 @@ function search(raw){
 }
 
 $("q").addEventListener("input", e => { $("clr").hidden = !e.target.value; if(e.target.value !== lastQ){ limit = 30; lastQ = e.target.value; } search(e.target.value); });
-["心筋梗塞","肺炎","脳梗塞","熱中症","心停止","アナフィラキシー","低血糖","大腿骨"].forEach(w => {
-  const b = document.createElement("button"); b.className = "chip"; b.type = "button"; b.textContent = w;
-  b.onclick = () => { $("q").value = w; $("clr").hidden = false; lastQ = w; limit = 30; search(w); };
-  $("chips").appendChild(b);
-});
-
+const HK = "shobyomei-history-v1";
+let hist = [];
+try { hist = JSON.parse(localStorage.getItem(HK) || "[]").filter(x => typeof x === "string").slice(0,10); } catch(_){ hist = []; }
+function saveHist(){ try { localStorage.setItem(HK, JSON.stringify(hist)); } catch(_){} }
+function renderHist(){
+  const box = $("chips"); box.innerHTML = "";
+  hist.forEach(w => {
+    const b = document.createElement("button"); b.className = "chip"; b.type = "button"; b.textContent = w;
+    b.onclick = () => { $("q").value = w; $("clr").hidden = false; lastQ = w; limit = 30; search(w); addHist(w); };
+    box.appendChild(b);
+  });
+  $("histh").hidden = !hist.length; $("histe").hidden = !!hist.length;
+}
+function addHist(w){
+  w = w.trim(); if(!w) return;
+  hist = [w, ...hist.filter(x => x !== w)].slice(0,10); saveHist(); renderHist();
+}
+let hTimer;
+function queueHist(){
+  clearTimeout(hTimer);
+  const w = $("q").value.trim();
+  if(w.length < 1) return;
+  hTimer = setTimeout(() => { if($("results").querySelector(".card") && $("q").value.trim() === w) addHist(w); }, 1500);
+}
+$("q").addEventListener("input", queueHist);
+$("q").addEventListener("blur", () => { clearTimeout(hTimer); const w = $("q").value.trim(); if(w && $("results").querySelector(".card")) addHist(w); });
+$("histclr").onclick = () => { hist = []; saveHist(); renderHist(); };
+renderHist();
 $("clr").onclick = () => { const q = $("q"); q.value = ""; lastQ = ""; $("clr").hidden = true; search(""); q.focus(); };
 $("q").addEventListener("keydown", e => { if(e.key === "Enter") e.target.blur(); });
 $("results").addEventListener("touchstart", () => { if(document.activeElement === $("q")) $("q").blur(); }, {passive:true});
